@@ -2,12 +2,14 @@
     {description, "An OTP application"},
     {vsn, "0.1.0"},
     {registered, [
-        erlang_messaging_sup, chat_listener
+        erlang_messaging_sup, chat_listener, web_server
     ]},
     {mod, {erlang_messaging_app, []}},
     {applications, [
         kernel,
-        stdlib
+        stdlib,
+        cowboy,
+        jsx
     ]},
     {env, []},
     {modules, [
@@ -15,7 +17,9 @@
         erlang_messaging_sup,
         chat_listener,
         chat_session,
-        chat_room
+        chat_room,
+        web_server,
+        web_handler
     ]},
     {licenses, ["Apache-2.0"]},
     {links, []}

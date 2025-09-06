@@ -26,14 +26,25 @@ start_link() ->
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
 init([]) ->
-    ListenerChild = #{
-        id => chat_listener,
-        start => {chat_listener, start_link, [4040]},
-        restart => permanent,
-        shutdown => 5000,
-        type => worker,
-        modules => [chat_listener]
-    },
-    {ok, {{one_for_one, 5, 10}, [ListenerChild]}}.
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 1,
+                 period => 5},
+    
+    ChatListener = #{id => chat_listener,
+                     start => {chat_listener, start_link, [4040]},
+                     restart => permanent,
+                     shutdown => 5000,
+                     type => worker,
+                     modules => [chat_listener]},
+    
+    WebServer = #{id => web_server,
+                  start => {web_server, start_link, [8080]},
+                  restart => permanent,
+                  shutdown => 5000,
+                  type => worker,
+                  modules => [web_server]},
+    
+    Children = [ChatListener, WebServer],
+    {ok, {SupFlags, Children}}.
 
 %% internal functions
