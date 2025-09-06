@@ -1,0 +1,22 @@
+{application, erlang_messaging, [
+    {description, "An OTP application"},
+    {vsn, "0.1.0"},
+    {registered, [
+        erlang_messaging_sup, chat_listener
+    ]},
+    {mod, {erlang_messaging_app, []}},
+    {applications, [
+        kernel,
+        stdlib
+    ]},
+    {env, []},
+    {modules, [
+        erlang_messaging_app,
+        erlang_messaging_sup,
+        chat_listener,
+        chat_session,
+        chat_room
+    ]},
+    {licenses, ["Apache-2.0"]},
+    {links, []}
+ ]}.
