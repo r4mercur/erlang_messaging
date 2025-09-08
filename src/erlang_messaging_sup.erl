@@ -29,6 +29,33 @@ init([]) ->
     SupFlags = #{strategy => one_for_one,
                  intensity => 1,
                  period => 5},
+
+    PoolName = db_pool,
+    PoolSize = 5,
+    MaxOverflow = 5,
+
+    PoolboyChild = #{
+        id => db_pool,
+        start => {poolboy, start_link, [
+            {name, {local, PoolName}},
+            {worker_module, db_worker},
+            {size, PoolSize},
+            {max_overflow, MaxOverflow}
+        ]},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [poolboy]
+    },
+
+    ChatStore = #{
+        id => chat_store,
+        start => {chat_store, start_link, [PoolName]},
+        restart => permanent,
+        shutdown => 5000,
+        type => worker,
+        modules => [chat_store]
+    },
     
     ChatListener = #{id => chat_listener,
                      start => {chat_listener, start_link, [4040]},
@@ -44,7 +71,7 @@ init([]) ->
                   type => worker,
                   modules => [web_server]},
     
-    Children = [ChatListener, WebServer],
+    Children = [ChatListener, WebServer, PoolboyChild, ChatStore],
     {ok, {SupFlags, Children}}.
 
 %% internal functions

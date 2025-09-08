@@ -6,7 +6,8 @@
 -record(ws_state, {
     session_pid,
     nick = <<"anon">>,
-    room = undefined
+    room = undefined,
+    user_id = undefined
 }).
 
 %% HTTP Handler for static files and WebSocket upgrade
@@ -34,15 +35,25 @@ websocket_init(State) ->
 websocket_handle({text, Msg}, State) ->
     case jsx:decode(Msg, [return_maps]) of
         #{<<"type">> := <<"nick">>, <<"data">> := Nick} ->
-            NewState = State#ws_state{nick = Nick},
-            {reply, {text, jsx:encode(#{type => <<"nick_ok">>, data => <<"Nick set">>})}, NewState};
+            % Get or create user in database
+            case chat_store:get_or_create_user(Nick) of
+                {ok, #{id := UserId}} ->
+                    NewState = State#ws_state{nick = Nick, user_id = UserId},
+                    {reply, {text, jsx:encode(#{type => <<"nick_ok">>, data => <<"Nick set">>})}, NewState};
+                _ ->
+                    {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Failed to set nick">>})}, State}
+            end;
         
         #{<<"type">> := <<"join">>, <<"data">> := Room} ->
             try
                 maybe_leave_room(State),
-                ok = chat_room:join(Room, self(), State#ws_state.nick),
-                NewState = State#ws_state{room = Room},
-                {reply, {text, jsx:encode(#{type => <<"join_ok">>, room => Room})}, NewState}
+                case chat_room:join(Room, self(), State#ws_state.nick) of
+                    ok ->
+                        NewState = State#ws_state{room = Room},
+                        {reply, {text, jsx:encode(#{type => <<"join_ok">>, room => Room})}, NewState};
+                    Error ->
+                        {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Failed to join room">>})}, State}
+                end
             catch
                 _:_ ->
                     {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Failed to join room">>})}, State}
@@ -62,6 +73,23 @@ websocket_handle({text, Msg}, State) ->
             NewState = State#ws_state{room = undefined},
             {reply, {text, jsx:encode(#{type => <<"leave_ok">>})}, NewState};
         
+        #{<<"type">> := <<"get_history">>, <<"data">> := Limit} ->
+            case State#ws_state.room of
+                undefined ->
+                    {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Join a room first">>})}, State};
+                Room ->
+                    case chat_room:get_room_history(Room, Limit) of
+                        {ok, Messages} ->
+                            HistoryMsg = jsx:encode(#{
+                                type => <<"history">>, 
+                                messages => format_messages_for_client(Messages)
+                            }),
+                            {reply, {text, HistoryMsg}, State};
+                        _ ->
+                            {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Failed to get history">>})}, State}
+                    end
+            end;
+        
         _ ->
             {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Unknown command">>})}, State}
     end;
@@ -74,7 +102,8 @@ websocket_info({room_msg, Room, FromNick, Text}, State) ->
         type => <<"room_message">>, 
         room => Room, 
         nick => FromNick, 
-        message => Text
+        message => Text,
+        timestamp => erlang:system_time(millisecond)
     }),
     {reply, {text, Msg}, State};
 
@@ -90,6 +119,17 @@ maybe_leave_room(#ws_state{room = undefined}) -> ok;
 maybe_leave_room(#ws_state{room = Room}) ->
     chat_room:leave(Room, self()).
 
+format_messages_for_client(Messages) ->
+    [#{
+        nick => maps:get(sender_nick, Msg, <<"system">>),
+        message => maps:get(body, Msg),
+        timestamp => format_timestamp(maps:get(sent_at, Msg))
+    } || Msg <- Messages].
+
+format_timestamp(Timestamp) ->
+    % Convert PostgreSQL timestamp to milliseconds
+    calendar:datetime_to_gregorian_seconds(Timestamp) * 1000.
+
 websocket_session_loop(WebSocketPid) ->
     receive
         {room_msg, Room, FromNick, Text} ->
@@ -99,6 +139,7 @@ websocket_session_loop(WebSocketPid) ->
             websocket_session_loop(WebSocketPid)
     end.
 
+% ... rest of get_chat_html() bleibt gleich ...
 get_chat_html() ->
     <<"<!DOCTYPE html>
 <html lang='de'>
@@ -123,6 +164,7 @@ get_chat_html() ->
         .message.own { color: #27ae60; font-weight: bold; }
         .message.other { color: #2c3e50; }
         .message.system { color: #7f8c8d; font-style: italic; }
+        .message.history { opacity: 0.7; }
         .status { padding: 10px; background-color: #ecf0f1; border-radius: 5px; margin-bottom: 10px; }
     </style>
 </head>
@@ -140,6 +182,7 @@ get_chat_html() ->
             <input type='text' id='roomInput' placeholder='Raum-Name' value='singles'>
             <button onclick='joinRoom()'>Raum beitreten</button>
             <button onclick='leaveRoom()'>Raum verlassen</button>
+            <button onclick='getHistory()'>History laden</button>
         </div>
         
         <div class='chat-area' id='chatArea'></div>
@@ -198,6 +241,15 @@ get_chat_html() ->
                     const isOwn = data.nick === currentNick;
                     addMessage(data.nick + ': ' + data.message, isOwn ? 'own' : 'other');
                     break;
+                case 'history':
+                    clearChatArea();
+                    data.messages.forEach(msg => {
+                        const isOwn = msg.nick === currentNick;
+                        const msgClass = msg.nick === 'system' ? 'system history' : (isOwn ? 'own history' : 'other history');
+                        addMessage(msg.nick + ': ' + msg.message, msgClass);
+                    });
+                    addMessage('--- Ende der History ---', 'system');
+                    break;
                 case 'error':
                     updateStatus('Fehler: ' + data.data, 'error');
                     addMessage('Fehler: ' + data.data, 'system');
@@ -226,6 +278,14 @@ get_chat_html() ->
             }
         }
         
+        function getHistory() {
+            if (currentRoom) {
+                send({type: 'get_history', data: 50});
+            } else {
+                updateStatus('Tritt zuerst einem Raum bei!', 'error');
+            }
+        }
+        
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const message = input.value.trim();
@@ -250,6 +310,10 @@ get_chat_html() ->
             div.textContent = new Date().toLocaleTimeString() + ' - ' + text;
             chatArea.appendChild(div);
             chatArea.scrollTop = chatArea.scrollHeight;
+        }
+        
+        function clearChatArea() {
+            document.getElementById('chatArea').innerHTML = '';
         }
         
         function updateStatus(text, type) {
