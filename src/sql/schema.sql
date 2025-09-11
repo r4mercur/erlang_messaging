@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS app_user (
 
 CREATE TABLE IF NOT EXISTS conversation (
     id BIGSERIAL PRIMARY KEY,
-    kind VARCHAR(50) NOT NULL DEFAULT 'direct'
+    kind VARCHAR(50) NOT NULL DEFAULT 'direct',
+    room_name VARCHAR(255) UNIQUE,
+    meta JSONB DEFAULT '{}'::JSONB
 );
 
 CREATE TABLE IF NOT EXISTS conversation_participant (

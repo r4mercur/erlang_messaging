@@ -159,10 +159,18 @@ get_or_create_conversation(RoomName) ->
         {ok, #{id := ConvId}} -> ConvId;
         {error, not_found} ->
             % Create new conversation for this room
-            case chat_store:create_conversation(<<"room">>) of
+            case chat_store:create_conversation(<<"room">>, RoomNameStr) of
                 {ok, #{id := ConvId}} -> ConvId;
-                _ -> error(failed_to_create_conversation)
-            end
+                {error, Reason} -> 
+                    io:format("Failed to create conversation: ~p~n", [Reason]),
+                    error(failed_to_create_conversation);
+                Other -> 
+                    io:format("Unexpected response creating conversation: ~p~n", [Other]),
+                    error(failed_to_create_conversation)
+            end;
+        Error ->
+            io:format("Error getting conversation: ~p~n", [Error]),
+            error(failed_to_get_conversation)
     end.
 
 send_history_to_user(Pid, Room, Messages) ->
