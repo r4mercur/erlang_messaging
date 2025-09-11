@@ -1,6 +1,6 @@
 -module(db_worker).
--behaviour(poolboy_worker).
 -behaviour(gen_server).
+-behaviour(poolboy_worker).
 
 -export([start_link/1]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
@@ -11,26 +11,33 @@ start_link(Args) ->
     gen_server:start_link(?MODULE, Args, []).
 
 init(_Args) ->
-    % PostgreSQL Connection
-    {ok, Conn} = epgsql:connect(#{
-        host => "localhost",
-        port => 5432,
-        username => "messaging_user",
-        password => "messaging_pass",
-        database => "messaging_db"
-    }),
-    {ok, #state{conn = Conn}}.
+    process_flag(trap_exit, true),
+    % PostgreSQL connection parameters
+    ConnOpts = [
+        {host, "host.docker.internal"},
+        {port, 5432},
+        {database, "messaging_db"},
+        {username, "messaging_user"},
+        {password, "messaging_pass"}
+    ],
+    
+    case epgsql:connect(ConnOpts) of
+        {ok, Conn} ->
+            {ok, #state{conn = Conn}};
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
-handle_call({query, Query}, _From, #state{conn = Conn} = State) ->
-    Result = epgsql:equery(Conn, Query),
+handle_call({query, Sql}, _From, #state{conn = Conn} = State) ->
+    Result = epgsql:squery(Conn, Sql),
     {reply, Result, State};
 
-handle_call({query, Query, Params}, _From, #state{conn = Conn} = State) ->
-    Result = epgsql:equery(Conn, Query, Params),
+handle_call({query, Sql, Params}, _From, #state{conn = Conn} = State) ->
+    Result = epgsql:equery(Conn, Sql, Params),
     {reply, Result, State};
 
 handle_call(_Request, _From, State) ->
-    {reply, {error, unknown_request}, State}.
+    {reply, ok, State}.
 
 handle_cast(_Msg, State) ->
     {noreply, State}.

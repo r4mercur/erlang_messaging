@@ -2,14 +2,16 @@
     {description, "An OTP application"},
     {vsn, "0.1.0"},
     {registered, [
-        erlang_messaging_sup, chat_listener, web_server
+        erlang_messaging_sup, chat_listener, web_server, chat_store
     ]},
     {mod, {erlang_messaging_app, []}},
     {applications, [
         kernel,
         stdlib,
         cowboy,
-        jsx
+        jsx,
+        poolboy,
+        epgsql
     ]},
     {env, []},
     {modules, [
@@ -18,6 +20,8 @@
         chat_listener,
         chat_session,
         chat_room,
+        chat_store,
+        db_worker,
         web_server,
         web_handler
     ]},

@@ -37,10 +37,10 @@ init([]) ->
     PoolboyChild = #{
         id => db_pool,
         start => {poolboy, start_link, [
-            {name, {local, PoolName}},
-            {worker_module, db_worker},
-            {size, PoolSize},
-            {max_overflow, MaxOverflow}
+            [{name, {local, PoolName}},
+             {worker_module, db_worker},
+             {size, PoolSize},
+             {max_overflow, MaxOverflow}]
         ]},
         restart => permanent,
         shutdown => 5000,

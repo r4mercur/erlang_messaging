@@ -51,7 +51,7 @@ websocket_handle({text, Msg}, State) ->
                     ok ->
                         NewState = State#ws_state{room = Room},
                         {reply, {text, jsx:encode(#{type => <<"join_ok">>, room => Room})}, NewState};
-                    Error ->
+                    _ ->
                         {reply, {text, jsx:encode(#{type => <<"error">>, data => <<"Failed to join room">>})}, State}
                 end
             catch
